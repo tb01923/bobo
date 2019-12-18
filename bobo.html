@@ -1,0 +1,268 @@
+<html>
+  <head>
+    <script type="text/javascript">
+      /***
+      GOALS:
+        1. No vendor and Native implementation
+        2. Minmize cycletime in journey work
+        3. Browser: concenttates on sending atomic data to the observer
+        4. Server: Save Data && then later curates the business Events
+        5. SMALL Footprint / Fast Load (no Ensighten)
+        6. Track across journeys (single persistable domain cookie, session cookies)
+      ***/
+      ///////////////////////////////////////////////////////////////
+      // DOM Mutation Event Handler
+      //      https://stackoverflow.com/questions/3219758/detect-changes-in-the-dom/14570614
+      ///////////////////////////////////////////////////////////////
+      var observeDOM = (function(){
+        var MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
+
+        return function( obj, callback ){
+          if( !obj || !obj.nodeType === 1 ) return; // validation
+
+          if( MutationObserver ){
+            // define a new observer
+            var obs = new MutationObserver(function(mutations, observer){
+                callback(mutations);
+            })
+            // have the observer observe foo for changes in children
+            obs.observe( obj, { childList:true, subtree:true });
+          }
+
+          else if( window.addEventListener ){
+            obj.addEventListener('DOMNodeInserted', callback, false);
+            obj.addEventListener('DOMNodeRemoved', callback, false);
+          }
+        }
+      })();
+
+      ///////////////////////////////////////////////////////////////
+      // Attach events to all clickables
+      ///////////////////////////////////////////////////////////////
+      const isTag = (tagName) => (element) =>
+        element.tagName.toLowerCase() === tagName ;
+
+      const hasEventHandler = (eventName) => (element) =>
+        element[eventName] !== null && element[eventName] !== undefined ;
+
+      const isInput = isTag('input') ;
+      const isInputType = (inputType) => (element) =>
+        isInput(element) && element.type.toLowerCase() === inputType ;
+
+      const not = (boolean) => !boolean ;
+      const or = (boolean1,boolean2) => boolean1 || boolean2 ;
+      const any = (arr) => arr.reduce(or, false) ;
+
+      const elementPassesAnyPredicate = (predicateArray) => (element) => {
+        const applyelement = (f) => f(element);
+
+        // convert Array<predicate> to Array<boolean)
+        const bools = predicateArray.map(applyelement) ;
+
+        // if any of the bools are true the element is clickable
+        return any(bools)
+      }
+
+      const isBlurable = elementPassesAnyPredicate([
+        isInputType('text'),
+        isInputType('textarea')
+      ]);
+
+      const isClickable = elementPassesAnyPredicate([
+        isTag('button'),
+        isTag('a'),
+        isInputType('submit'),
+        isInputType('button'),
+        isInputType('radio'),
+        isInputType('checkbox'),
+        hasEventHandler('onclick')
+      ]);
+
+      // dictionary that stores whether an event has been fired
+      //    in order to prevent duplicates
+      var alreadyFired = {} ;
+      const shouldFire = (element, event) => {
+        const key = '' + element.type + event.timeStamp ;
+        if(alreadyFired[key]) {
+          return false ;
+        }
+        alreadyFired[key] = 1 ;
+        return true ;
+      }
+
+      const makeBasicEventObject = (element, event) => {
+        const object = {
+          on: (new Date()).toISOString(),
+          eventType: event.type,
+          tagName: element.tagName,
+          source: window.location.href
+        }
+
+        if(element.type) {
+          object.elementType = element.type ;
+        }
+
+        if(element.id) {
+          object.id = element.id ;
+        }
+        if(element.name) {
+          object.name = element.name ;
+        }
+
+        if(element.value) {
+          object.value = element.value;
+        }
+        if(element.checked) {
+          object.checked = element.checked;
+        }
+        if(element.href) {
+          object.href = element.href;
+        }
+
+        return object ;
+      }
+
+      // this should be asynch and we shouldn't wait on it
+      const executeSendEvent = (event) => {
+        const div = "<div>" + JSON.stringify(event) + "</div>";
+        const right = document.querySelector('html > body > .right');
+        console.log(JSON.stringify(event))
+        right.insertAdjacentHTML("beforeend", div);
+      }
+
+      const sendEvent = (...args) => {
+        const event = args.pop() ;
+        const element = args.pop() ;
+
+        //////////////////////////////////////////////////
+        // we might not want all clicks to fire
+        //////////////////////////////////////////////////
+        if(shouldFire(element, event)) {
+          const object = makeBasicEventObject(element, event) ;
+          executeSendEvent(object);
+        }
+      }
+
+      function attachOnClickToClickables(element) {
+
+        if(isClickable(element)){
+          console.log('clickable', element.tagName, element.type)
+          element.addEventListener('click', sendEvent.bind(null, element) );
+        }
+        else if(isBlurable(element)) {
+          element.addEventListener('blur', sendEvent.bind(null, element) );
+        }
+        for (let item of element.children) {
+          attachOnClickToClickables(item);
+        }
+      }
+
+      function start() {
+        ///////////////////////////////////////////////////////////////
+        // setup app functionality
+        ///////////////////////////////////////////////////////////////
+        var itemHTML = "<li><button>list item (click to delete)</button></li>",
+            listElm = document.querySelector('ol');
+
+        document.querySelector('html > body > .left > button').onclick = function(e){
+          listElm.insertAdjacentHTML("beforeend", itemHTML);
+        }
+
+        // this is a crappy way to attach an event handler... but
+        //    it happens.  In this case it causes events being fired on
+        //    something we don't care about the OL tag represented by <thead>
+        //    variable listElm
+        listElm.onclick = function(e){
+          if( e.target.nodeName == "BUTTON" )
+            e.target.parentNode.parentNode.removeChild(e.target.parentNode);
+        }
+
+        ///////////////////////////////////////////////////////////////
+        // attach onClick handlers to everythign clickable
+        ///////////////////////////////////////////////////////////////
+        attachOnClickToClickables(document.querySelector('html > body'))
+
+        ///////////////////////////////////////////////////////////////
+        // observe changes to the DOM
+        ///////////////////////////////////////////////////////////////
+        observeDOM( listElm, function(domMutation){
+           const handleRecord = (record) => {
+             record.addedNodes.forEach(attachOnClickToClickables)
+           }
+
+           domMutation.forEach(handleRecord)
+        });
+      }
+
+      ///////////////////////////////////////////////////////////////
+      // start once the DOM is ready
+      //    https://www.sitepoint.com/jquery-document-ready-plain-javascript/
+      ///////////////////////////////////////////////////////////////
+      function isReady(readyState){
+        return readyState === "complete" ||
+                (readyState !== "loading" && !documentElement.doScroll)
+      }
+
+      (function startWhenReady() {
+        if (isReady(document.readyState)) {
+          start();
+        } else {
+          document.addEventListener("DOMContentLoaded", start);
+        }
+      })();
+
+      function showMsg(item) {
+          alert(item);
+      }
+
+    </script>
+  </head>
+  <body style="padding: 20px;">
+    <span class="left" style="border: 1px solid black; vertical-align: top; float:left">
+      <button>Add Item</button>
+      <!--
+        app code attaches onclick to ol element, this is accidental complexity
+        introduced by language, framework and coding approach and not the
+        essential complexity introduced by the requirements
+      -->
+      <ol>
+        <li><button>list item (click to delete)</button></li>
+        <li><button>list item (click to delete)</button></li>
+        <li>text</li>
+        <li><button>list item (click to delete)</button></li>
+        <li><button>list item (click to delete)</button></li>
+      </ol>
+      <br/>
+      <div onclick="showMsg('Hello')"><u>Clickabe Div</u></div>
+      <br/>
+      <div>Not Clickable Div</div>
+      <br/>
+      <br/>
+      <input type="text" placeholder="typesomething here"/>
+      <br/>
+      <br/>
+      <input type="radio" name="gender" value="male"> Male<br>
+      <input type="radio" name="gender" value="female"> Female<br>
+      <input type="radio" name="gender" value="other"> Other
+      <br/>
+      <br/>
+      <input type="checkbox" name="vehicle1" value="Bike"> I have a bike<br>
+      <input type="checkbox" name="vehicle2" value="Car"> I have a car<br>
+      <input type="checkbox" name="vehicle3" value="Boat" checked> I have a boat<br>
+      <br/>
+      <br/>
+      <input type="submit" value="some submit" />
+      <br/>
+      <br/>
+      <input id="quoteStartBtn" type="button" value="Start Quote" />
+      <br/>
+      <br/>
+      <A href="http://www.google.com">Where can I take you?</A>
+
+
+    </span>
+    <span class="right" style="border: 1px solid black; vertical-align: top; float:right">
+      <u>Events we should fire to server</u>
+    </span>
+  </body>
+</html>
