@@ -13,9 +13,8 @@ The classic Bobo doll experiment, identified this basic form of learning in 1961
 6. Track across journeys (single persistable domain cookie, session cookies)
 
 # unknowns
-1. Polyfill
-1a. https://github.com/megawac/MutationObserver.js/tree/master
-1b. https://github.com/googlearchive/MutationObservers (follow links)
+1. Polyfill [ https://github.com/megawac/MutationObserver.js/tree/master or
+ https://github.com/googlearchive/MutationObservers (follow links) ]
 2. Batching of event postback to server
 3. Design of event schema for event types
 4. Server design
