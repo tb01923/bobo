@@ -14,8 +14,8 @@ The classic Bobo doll experiment, identified this basic form of learning in 1961
 
 # unknowns
 1. Polyfill
-1.a. https://github.com/megawac/MutationObserver.js/tree/master
-1.b. https://github.com/googlearchive/MutationObservers (follow links)
+1a. https://github.com/megawac/MutationObserver.js/tree/master
+1b. https://github.com/googlearchive/MutationObservers (follow links)
 2. Batching of event postback to server
 3. Design of event schema for event types
 4. Server design
